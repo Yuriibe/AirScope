@@ -133,8 +133,7 @@
         <label for="hs-ap-select">Access Point</label>
         <select id="hs-ap-select"></select>
 
-        <label for="hs-client-select">Client (muss konkret sein, kein Broadcast)</label>
-        <select id="hs-client-select"></select>
+        <p style="color: #aaa; font-size: 12px; margin-top: 8px;">Beobachtet alle Clients dieses APs (kein Ziel-Client nötig) - wie airodump-ng --bssid. Löst einen Broadcast-Deauth aus, um einen Reconnect zu erzwingen.</p>
 
         <label for="hs-timeout-input">Timeout (Sekunden)</label>
         <input type="number" id="hs-timeout-input" value="15" min="1">
@@ -199,7 +198,6 @@
                 const hsCurrent = hsApSelect.value;
                 hsApSelect.innerHTML = options;
                 if (hsCurrent) hsApSelect.value = hsCurrent;
-                updateHandshakeClientOptions();
             })
             .catch(e => console.error('Error loading targets:', e));
     }
@@ -217,18 +215,7 @@
         clientSelect.innerHTML = options.join('');
     }
 
-    function updateHandshakeClientOptions() {
-        const bssid = document.getElementById('hs-ap-select').value;
-        const ap = targets.find(a => a.bssid === bssid);
-        const clientSelect = document.getElementById('hs-client-select');
-        const options = (ap ? ap.clients : []).map(c =>
-            `<option value="${c.mac}">${c.mac} (${c.vendor})</option>`
-        );
-        clientSelect.innerHTML = options.length ? options.join('') : '<option value="">Kein Client bekannt</option>';
-    }
-
     document.getElementById('ap-select').addEventListener('change', updateClientOptions);
-    document.getElementById('hs-ap-select').addEventListener('change', updateHandshakeClientOptions);
 
     function startAttack() {
         const bssid = document.getElementById('ap-select').value;
@@ -289,12 +276,11 @@
 
     function startHandshakeCapture() {
         const bssid = document.getElementById('hs-ap-select').value;
-        const client_mac = document.getElementById('hs-client-select').value;
         const timeout = parseFloat(document.getElementById('hs-timeout-input').value) || 15;
         const statusDiv = document.getElementById('hs-status');
 
-        if (!bssid || !client_mac) {
-            statusDiv.textContent = 'AP und Client müssen ausgewählt sein.';
+        if (!bssid) {
+            statusDiv.textContent = 'Kein AP ausgewählt.';
             statusDiv.style.color = '#ff6b6b';
             return;
         }
@@ -302,7 +288,7 @@
         fetch('/api/handshake/start', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ bssid, client_mac, timeout })
+            body: JSON.stringify({ bssid, timeout })
         })
             .then(r => r.json())
             .then(data => {
@@ -310,7 +296,7 @@
                     statusDiv.textContent = 'Fehler: ' + data.error;
                     statusDiv.style.color = '#ff6b6b';
                 } else {
-                    statusDiv.textContent = `Capture läuft gegen ${data.client_mac} (${data.bssid}), Timeout ${data.timeout}s...`;
+                    statusDiv.textContent = `Capture läuft gegen ${data.bssid}, Timeout ${data.timeout}s...`;
                     statusDiv.style.color = '#00ff88';
                 }
             })
@@ -336,7 +322,7 @@
                     <tr>
                         <td>${new Date(e.time * 1000).toLocaleTimeString()}</td>
                         <td>${e.ssid}</td>
-                        <td>${e.client_mac}</td>
+                        <td>${(e.client_macs || []).join(', ') || '-'}</td>
                         <td>${HS_STATUS_LABELS[e.status] || e.status}</td>
                         <td>${e.frame_count}</td>
                         <td>${e.can_download ? `<a href="/api/handshake/download/${e.path.split('/').pop()}" style="color:#00ccff;">.pcap</a>` : '-'}</td>

