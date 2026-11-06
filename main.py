@@ -3,6 +3,8 @@ import threading
 from scapy.config import conf
 
 from config.settings import Config
+from core.channel_state import ChannelState
+from core.deauth_attacker import DeauthAttacker
 from core.network_scanner import NetworkScanner
 from core.packet_handler import PacketHandlers
 from display.formatter import NetworkFormatter, DataStore
@@ -17,14 +19,16 @@ conf.debug_dissector = 2
 # Track discovered APs and clients
 seen_aps = {}
 seen_clients = {}
+deauth_events = []
 
 # --- Main ---
 if __name__ == "__main__":
     vendor_manager = VendorManager(Config.VENDOR_DB_PATH)
-    packet_handlers = PacketHandlers(seen_aps, seen_clients)
+    channel_state = ChannelState()
+    packet_handlers = PacketHandlers(seen_aps, seen_clients, deauth_events, channel_state)
 
     # Initialize web bridge before starting Flask
-    web.server.web_bridge = WebDataBridge(seen_aps, seen_clients, vendor_manager)
+    web.server.web_bridge = WebDataBridge(seen_aps, seen_clients, vendor_manager, deauth_events)
     print(f"DEBUG: Initialized web_bridge with {len(seen_aps)} APs and {len(seen_clients)} clients")
 
     persistence_manager = PersistenceManager(
@@ -32,11 +36,13 @@ if __name__ == "__main__":
     )
 
     with InterfaceManager(Config.INTERFACE) as iface_manager:
-        scanner = NetworkScanner(iface_manager, Config)
+        scanner = NetworkScanner(iface_manager, Config, channel_state)
         formatter = NetworkFormatter(
             DataStore(seen_aps, seen_clients),
             vendor_manager.find_vendor_by_mac
         )
+        deauth_attacker = DeauthAttacker(iface_manager, seen_aps, deauth_events, channel_state)
+        web.server.deauth_attacker = deauth_attacker
 
         threading.Thread(
             target=lambda: app.run(host='0.0.0.0', port=5000, debug=False),

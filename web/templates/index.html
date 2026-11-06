@@ -132,6 +132,25 @@
             background: #2980b9;
         }
 
+        .deauth-link-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #c0392b;
+            color: white;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 50px;
+            cursor: pointer;
+            font-size: 14px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            text-decoration: none;
+        }
+
+        .deauth-link-btn:hover {
+            background: #a93226;
+        }
+
         .loading {
             text-align: center;
             padding: 50px;
@@ -149,6 +168,7 @@
 </head>
 <body>
     <h1>📡 WiFi Network Scanner</h1>
+    <a class="deauth-link-btn" href="/deauth">⚡ Deauth Lab</a>
 
     <div class="stats" id="stats">
         <div>Loading network data...</div>

@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WiFi Deauth Lab</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0c0c0c, #1a1a2e, #16213e);
+            font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
+            color: #fff;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        h1 {
+            color: #00ccff;
+            margin-bottom: 20px;
+        }
+
+        .nav-links {
+            margin-bottom: 20px;
+        }
+
+        .nav-links a {
+            color: #00ccff;
+            text-decoration: none;
+            margin-right: 15px;
+            font-size: 13px;
+        }
+
+        .panel {
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(0, 255, 255, 0.2);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            max-width: 700px;
+        }
+
+        label {
+            display: block;
+            margin-top: 12px;
+            margin-bottom: 4px;
+            font-size: 13px;
+            color: #aaa;
+        }
+
+        select, input {
+            width: 100%;
+            padding: 8px;
+            border-radius: 6px;
+            border: 1px solid rgba(0, 255, 255, 0.3);
+            background: rgba(0, 0, 0, 0.5);
+            color: #fff;
+            font-size: 14px;
+        }
+
+        button {
+            margin-top: 16px;
+            background: rgba(255, 60, 60, 0.2);
+            border: 1px solid rgba(255, 60, 60, 0.5);
+            color: #ff6b6b;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        button:hover {
+            background: rgba(255, 60, 60, 0.35);
+        }
+
+        #status {
+            margin-top: 12px;
+            font-size: 13px;
+            color: #00ff88;
+            min-height: 18px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        th, td {
+            text-align: left;
+            padding: 8px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        th {
+            color: #00ccff;
+        }
+
+        .source-self { color: #ff6b6b; font-weight: bold; }
+        .source-observed { color: #ffaa00; }
+    </style>
+</head>
+<body>
+    <h1>⚡ WiFi Deauth Lab</h1>
+    <div class="nav-links">
+        <a href="/">← List View</a>
+        <a href="/graph">3D Graph View</a>
+    </div>
+
+    <div class="panel">
+        <label for="ap-select">Access Point</label>
+        <select id="ap-select"></select>
+
+        <label for="client-select">Client</label>
+        <select id="client-select">
+            <option value="">Alle Clients (Broadcast)</option>
+        </select>
+
+        <label for="count-input">Frame-Anzahl</label>
+        <input type="number" id="count-input" value="20" min="1">
+
+        <button onclick="startAttack()">⚡ Deauth starten</button>
+        <div id="status"></div>
+    </div>
+
+    <div class="panel">
+        <h3 style="color: #00ccff; margin-bottom: 10px;">Deauth Events</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Zeit</th>
+                    <th>Quelle</th>
+                    <th>Von</th>
+                    <th>An</th>
+                    <th>SSID</th>
+                </tr>
+            </thead>
+            <tbody id="events-body"></tbody>
+        </table>
+    </div>
+
+<script>
+    let targets = [];
+
+    function loadTargets() {
+        fetch('/api/deauth/targets')
+            .then(r => r.json())
+            .then(data => {
+                targets = data;
+                const apSelect = document.getElementById('ap-select');
+                const current = apSelect.value;
+                apSelect.innerHTML = targets.map(ap =>
+                    `<option value="${ap.bssid}">${ap.ssid || '<hidden>'} (${ap.bssid})</option>`
+                ).join('');
+                if (current) apSelect.value = current;
+                updateClientOptions();
+            })
+            .catch(e => console.error('Error loading targets:', e));
+    }
+
+    function updateClientOptions() {
+        const bssid = document.getElementById('ap-select').value;
+        const ap = targets.find(a => a.bssid === bssid);
+        const clientSelect = document.getElementById('client-select');
+        const options = ['<option value="">Alle Clients (Broadcast)</option>'];
+        if (ap) {
+            ap.clients.forEach(c => {
+                options.push(`<option value="${c.mac}">${c.mac} (${c.vendor})</option>`);
+            });
+        }
+        clientSelect.innerHTML = options.join('');
+    }
+
+    document.getElementById('ap-select').addEventListener('change', updateClientOptions);
+
+    function startAttack() {
+        const bssid = document.getElementById('ap-select').value;
+        const client_mac = document.getElementById('client-select').value;
+        const count = parseInt(document.getElementById('count-input').value, 10) || 20;
+        const statusDiv = document.getElementById('status');
+
+        if (!bssid) {
+            statusDiv.textContent = 'Kein AP ausgewählt.';
+            statusDiv.style.color = '#ff6b6b';
+            return;
+        }
+
+        fetch('/api/deauth/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ bssid, client_mac, count })
+        })
+            .then(r => r.json())
+            .then(data => {
+                if (data.error) {
+                    statusDiv.textContent = 'Fehler: ' + data.error;
+                    statusDiv.style.color = '#ff6b6b';
+                } else {
+                    statusDiv.textContent = `Gestartet: ${data.count} Frames gegen ${data.client_mac || 'alle Clients'} von ${data.bssid}`;
+                    statusDiv.style.color = '#00ff88';
+                }
+            })
+            .catch(e => {
+                statusDiv.textContent = 'Fehler beim Starten: ' + e;
+                statusDiv.style.color = '#ff6b6b';
+            });
+    }
+
+    function loadEvents() {
+        fetch('/api/deauth/events')
+            .then(r => r.json())
+            .then(events => {
+                const tbody = document.getElementById('events-body');
+                tbody.innerHTML = events.map(e => `
+                    <tr>
+                        <td>${new Date(e.time * 1000).toLocaleTimeString()}</td>
+                        <td class="source-${e.source}">${e.source === 'self' ? 'Selbst gesendet' : 'Beobachtet'}</td>
+                        <td>${e.src}</td>
+                        <td>${e.dst}</td>
+                        <td>${e.ssid}</td>
+                    </tr>
+                `).join('');
+            })
+            .catch(e => console.error('Error loading events:', e));
+    }
+
+    loadTargets();
+    loadEvents();
+    setInterval(loadTargets, 10000);
+    setInterval(loadEvents, 3000);
+</script>
+</body>
+</html>
