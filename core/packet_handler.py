@@ -4,22 +4,25 @@ from scapy.layers.dot11 import Dot11
 
 
 class PacketHandlers:
-    def __init__(self, seen_aps, seen_clients, deauth_events=None):
+    def __init__(self, seen_aps, seen_clients, deauth_events=None, channel_state=None):
         self.seen_aps = seen_aps
         self.seen_clients = seen_clients
         self.deauth_events = deauth_events if deauth_events is not None else []
+        self.channel_state = channel_state
 
     def handle_beacon_frame(self, pkt):
         """Handle Access Point beacon frames"""
         ssid = pkt.info.decode(errors="ignore")
         bssid = pkt.addr2
+        channel = self.channel_state.current if self.channel_state else None
 
         if ssid:
-            self.seen_aps[bssid] = {'ssid': ssid, 'last_seen': time.time()}
+            self.seen_aps[bssid] = {'ssid': ssid, 'last_seen': time.time(), 'channel': channel}
         elif bssid not in self.seen_aps:
-            self.seen_aps[bssid] = {'ssid': '<hidden>', 'last_seen': time.time()}
+            self.seen_aps[bssid] = {'ssid': '<hidden>', 'last_seen': time.time(), 'channel': channel}
         else:
             self.seen_aps[bssid]['last_seen'] = time.time()
+            self.seen_aps[bssid]['channel'] = channel
 
     def handle_probe_request(self, pkt):
         """Handle client probe requests"""
@@ -76,7 +79,8 @@ class PacketHandlers:
             'time': now,
             'src': src,
             'dst': dst,
-            'bssid': bssid
+            'bssid': bssid,
+            'source': 'observed'
         })
 
     def handle_data_frame(self, pkt):
