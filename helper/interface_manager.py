@@ -1,5 +1,6 @@
-import os
+import subprocess
 import time
+
 
 class InterfaceManager:
     def __init__(self, iface="wlan0"):
@@ -12,11 +13,17 @@ class InterfaceManager:
 
     def __exit__(self, exc_type, exc_value, traceback):
         print("\n⚠️  Restoring interface...")
-        self.restore_managed_mode()
+        try:
+            self.restore_managed_mode()
+        except RuntimeError as e:
+            print(f"⚠️  Could not restore interface: {e}")
 
     def run_cmd(self, cmd):
-        """Run a shell command and suppress output."""
-        os.system(cmd + " >/dev/null 2>&1")
+        """Run a shell command, raising if it fails."""
+        result = subprocess.run(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        if result.returncode != 0:
+            stderr = result.stderr.decode(errors="ignore").strip()
+            raise RuntimeError(f"Command failed ({result.returncode}): {cmd}" + (f" — {stderr}" if stderr else ""))
 
     def set_monitor_mode(self):
         """Put interface into monitor mode."""
@@ -36,5 +43,5 @@ class InterfaceManager:
             self.run_cmd(f"iw dev {self.iface} set channel {ch}")
             # print(f"🔄 Switched to channel {ch}")
             time.sleep(0.5)  # Kurze Pause nach Channel-Wechsel
-        except Exception as e:
+        except RuntimeError as e:
             print(f"Error setting channel {ch}: {e}")
