@@ -1,19 +1,25 @@
+import time
+
 from scapy.layers.dot11 import Dot11
 
 
 class PacketHandlers:
-    def __init__(self, seen_aps, seen_clients):
+    def __init__(self, seen_aps, seen_clients, deauth_events=None):
         self.seen_aps = seen_aps
         self.seen_clients = seen_clients
+        self.deauth_events = deauth_events if deauth_events is not None else []
 
     def handle_beacon_frame(self, pkt):
         """Handle Access Point beacon frames"""
         ssid = pkt.info.decode(errors="ignore")
         bssid = pkt.addr2
 
-        if bssid not in self.seen_aps:
-            self.seen_aps[bssid] = ssid or '<hidden>'
-            # print(f"[AP] SSID: {ssid or '<hidden>'} | BSSID: {bssid}")
+        if ssid:
+            self.seen_aps[bssid] = {'ssid': ssid, 'last_seen': time.time()}
+        elif bssid not in self.seen_aps:
+            self.seen_aps[bssid] = {'ssid': '<hidden>', 'last_seen': time.time()}
+        else:
+            self.seen_aps[bssid]['last_seen'] = time.time()
 
     def handle_probe_request(self, pkt):
         """Handle client probe requests"""
@@ -24,40 +30,72 @@ class PacketHandlers:
             self.seen_clients[client] = {
                 'connected_to': None,
                 'ssid': None,
-                'probes': []
+                'probes': [],
+                'last_seen': time.time()
             }
 
         # Track what SSIDs this client is probing for
         if ssid and ssid not in self.seen_clients[client]['probes']:
             self.seen_clients[client]['probes'].append(ssid)
+        self.seen_clients[client]['last_seen'] = time.time()
 
     def handle_association_request(self, pkt):
-        """Handle client association requests"""
+        """Handle client association/reassociation requests"""
         client = pkt.addr2
         ap_bssid = pkt.addr1
 
         if client not in self.seen_clients:
-            self.seen_clients[client] = {'connected_to': None, 'ssid': None, 'probes': []}
+            self.seen_clients[client] = {'connected_to': None, 'ssid': None, 'probes': [], 'last_seen': time.time()}
 
+        ap_info = self.seen_aps.get(ap_bssid, {})
         self.seen_clients[client]['connected_to'] = ap_bssid
-        self.seen_clients[client]['ssid'] = self.seen_aps.get(ap_bssid, 'Unknown')
+        self.seen_clients[client]['ssid'] = ap_info.get('ssid', 'Unknown')
+        self.seen_clients[client]['last_seen'] = time.time()
         print(f"[ASSOC] Client {client} associating with {ap_bssid}")
+
+    def handle_disassociation(self, pkt):
+        """Handle disassociation frames - client leaving an AP"""
+        client = pkt.addr2
+        if client in self.seen_clients:
+            self.seen_clients[client]['connected_to'] = None
+            self.seen_clients[client]['last_seen'] = time.time()
+
+    def handle_deauthentication(self, pkt):
+        """Handle deauthentication frames - clear connection state and log the event"""
+        src = pkt.addr2
+        dst = pkt.addr1
+        bssid = pkt.addr3
+        now = time.time()
+
+        for mac in (src, dst):
+            if mac in self.seen_clients:
+                self.seen_clients[mac]['connected_to'] = None
+                self.seen_clients[mac]['last_seen'] = now
+
+        self.deauth_events.append({
+            'time': now,
+            'src': src,
+            'dst': dst,
+            'bssid': bssid
+        })
 
     def handle_data_frame(self, pkt):
         """Handle data frames to track active connections"""
         src = pkt.addr2
         dst = pkt.addr1
-        bssid = pkt.addr3
+        now = time.time()
 
         # Client to AP traffic
         if src in self.seen_clients and dst in self.seen_aps:
             self.seen_clients[src]['connected_to'] = dst
-            self.seen_clients[src]['ssid'] = self.seen_aps.get(dst, 'Unknown')
+            self.seen_clients[src]['ssid'] = self.seen_aps.get(dst, {}).get('ssid', 'Unknown')
+            self.seen_clients[src]['last_seen'] = now
 
         # AP to Client traffic
         elif src in self.seen_aps and dst in self.seen_clients:
             self.seen_clients[dst]['connected_to'] = src
-            self.seen_clients[dst]['ssid'] = self.seen_aps.get(src, 'Unknown')
+            self.seen_clients[dst]['ssid'] = self.seen_aps.get(src, {}).get('ssid', 'Unknown')
+            self.seen_clients[dst]['last_seen'] = now
 
     def packet_handler(self, pkt):
         """Main packet processing dispatcher"""
@@ -70,8 +108,12 @@ class PacketHandlers:
                 self.handle_beacon_frame(pkt)
             elif pkt.subtype == 4:  # Probe requests
                 self.handle_probe_request(pkt)
-            elif pkt.subtype == 0:  # Association requests
+            elif pkt.subtype in (0, 2):  # Association / reassociation requests
                 self.handle_association_request(pkt)
+            elif pkt.subtype == 10:  # Disassociation
+                self.handle_disassociation(pkt)
+            elif pkt.subtype == 12:  # Deauthentication
+                self.handle_deauthentication(pkt)
 
         # Data frames
         elif pkt.type == 2:
