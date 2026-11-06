@@ -13,9 +13,14 @@ class WebDataBridge:
     def get_network_data(self):
         """Format data for web consumption"""
         networks = []
-        for bssid, ssid in self.seen_aps.items():
+        # Snapshot first: dict(...) is atomic under the GIL, unlike iterating the live dict
+        # while the sniffer thread inserts new keys concurrently (avoids a RuntimeError).
+        aps_snapshot = dict(self.seen_aps)
+        clients_snapshot = dict(self.seen_clients)
+        for bssid, ap_info in aps_snapshot.items():
+            ssid = ap_info['ssid']
             clients = []
-            for client_mac, client_info in self.seen_clients.items():
+            for client_mac, client_info in clients_snapshot.items():
                 connected_to = client_info.get("connected_to")
                 probes = client_info.get("probes", [])
 
@@ -72,4 +77,4 @@ def start_server(seen_aps, seen_clients, vendor_manager, host='0.0.0.0', port=50
     print(f"DEBUG: Initializing web_bridge with {len(seen_aps)} APs and {len(seen_clients)} clients")
     web_bridge = WebDataBridge(seen_aps, seen_clients, vendor_manager)
     print("DEBUG: web_bridge initialized successfully")
-    app.run(host=host, port=port, debug=True, threaded=True)
+    app.run(host=host, port=port, debug=False, threaded=True)

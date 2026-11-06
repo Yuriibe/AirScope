@@ -19,12 +19,14 @@ class NetworkFormatter:
         print("📡 DISCOVERED ACCESS POINTS")
         print("=" * 70)
 
-        for bssid, ssid in self.data_store.seen_aps.items():
-            # Count connected clients
-            connected_count = sum(1 for client_info in self.data_store.seen_clients.values()
+        # Snapshot first: dict(...) is atomic under the GIL, unlike iterating the live dict
+        # while the sniffer thread inserts new keys concurrently.
+        clients_snapshot = dict(self.data_store.seen_clients)
+        for bssid, ap_info in dict(self.data_store.seen_aps).items():
+            connected_count = sum(1 for client_info in clients_snapshot.values()
                                   if client_info['connected_to'] == bssid)
             vendor = self.vendor_lookup_func(bssid)
-            print(f"SSID: {ssid:<20} | BSSID: {bssid} | Clients: {connected_count} | Vendor: {vendor}")
+            print(f"SSID: {ap_info['ssid']:<20} | BSSID: {bssid} | Clients: {connected_count} | Vendor: {vendor}")
 
     def format_client_summary(self):
         """Format clients section"""
@@ -32,7 +34,7 @@ class NetworkFormatter:
         print("👥 DISCOVERED CLIENTS")
         print("=" * 70)
 
-        for client_mac, client_info in self.data_store.seen_clients.items():
+        for client_mac, client_info in dict(self.data_store.seen_clients).items():
             if client_info['connected_to']:
                 status = f"Connected to: {client_info['ssid']} ({client_info['connected_to']})"
             elif client_info['probes']:
