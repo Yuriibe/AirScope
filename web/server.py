@@ -16,14 +16,15 @@ class WebDataBridge:
         for bssid, ssid in self.seen_aps.items():
             clients = []
             for client_mac, client_info in self.seen_clients.items():
-                status = "unknown"
                 connected_to = client_info.get("connected_to")
                 probes = client_info.get("probes", [])
 
                 if connected_to == bssid:
                     status = "connected"
-                elif not connected_to and probes:
+                elif not connected_to and ssid in probes:
                     status = "probing"
+                else:
+                    continue
 
                 clients.append({
                     "mac": client_mac,

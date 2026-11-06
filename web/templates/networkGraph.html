@@ -115,6 +115,8 @@
 <div id="container">
     <div id="info-panel">
         <h3 style="color: #00ccff; margin-bottom: 10px;">WiFi Network Scanner</h3>
+        <a href="/" style="color: #00ccff; font-size: 12px; text-decoration: none;">&larr; Back to list view</a>
+        <div style="margin-top: 10px;"></div>
         <div>
             <span class="status-ap">Access Points:</span> <span id="ap-count">0</span><br>
             <span class="status-connected">Connected Clients:</span> <span id="connected-count">0</span><br>
@@ -151,7 +153,7 @@
         <button class="control-btn" onclick="toggleAnimation()">⏸️ Pause</button>
         <button class="control-btn" onclick="resetView()">🔄 Reset View</button>
         <button class="control-btn" onclick="toggleConnections()">🔗 Connections</button>
-        <button class="control-btn" onclick="loadNetworkData()">🔄 Refresh Data</button>
+        <button class="control-btn" onclick="updateNetworks()">🔄 Refresh Data</button>
     </div>
 </div>
 <script>
@@ -234,6 +236,11 @@
 
     // Create nodes
     function createNodes() {
+        // Clear previous nodes before rebuilding
+        nodes.forEach(node => scene.remove(node));
+        nodes.length = 0;
+        nodeMap.clear();
+
         // Create Access Points
         wifiData.accessPoints.forEach((ap, index) => {
             const geometry = new THREE.BoxGeometry(0.8, 0.8, 0.8);
@@ -260,7 +267,7 @@
             mesh.userData = { type: 'ap', data: ap };
             scene.add(mesh);
             nodes.push(mesh);
-            nodeMap.set(ap.id, mesh);
+            nodeMap.set(ap.bssid, mesh);
         });
 
         // Create Clients
@@ -297,15 +304,19 @@
             mesh.userData = { type: 'client', data: client };
             scene.add(mesh);
             nodes.push(mesh);
-            nodeMap.set(client.id, mesh);
+            nodeMap.set(client.mac, mesh);
         });
     }
 
     // Create connections
     function createConnections() {
+        // Clear previous connections before rebuilding
+        connections.forEach(conn => scene.remove(conn));
+        connections.length = 0;
+
         wifiData.clients.forEach(client => {
             if (client.status === 'connected' && client.connectedTo) {
-                const clientMesh = nodeMap.get(client.id);
+                const clientMesh = nodeMap.get(client.mac);
                 const apMesh = nodeMap.get(client.connectedTo);
 
                 if (clientMesh && apMesh) {
@@ -366,7 +377,7 @@
                 <strong>Status:</strong> ${userData.data.status}<br>
                 <strong>Vendor:</strong> ${userData.data.vendor}<br>
                 ${userData.data.connectedTo ? `<strong>Connected to:</strong> ${userData.data.connectedTo}` : ''}
-                ${userData.data.probingFor ? `<strong>Probing for:</strong> ${userData.data.probingFor}` : ''}
+                ${userData.data.probes && userData.data.probes.length ? `<strong>Probing for:</strong> ${userData.data.probes.join(', ')}` : ''}
             `;
         }
 
