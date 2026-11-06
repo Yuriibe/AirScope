@@ -121,7 +121,7 @@
             <option value="">Alle Clients (Broadcast)</option>
         </select>
 
-        <label for="count-input">Frame-Anzahl</label>
+        <label for="count-input">Wiederholungen (je 2 Frames pro Durchgang, AP↔Client)</label>
         <input type="number" id="count-input" value="20" min="1">
 
         <button onclick="startAttack()">⚡ Deauth starten</button>
@@ -134,9 +134,10 @@
             <thead>
                 <tr>
                     <th>Zeit</th>
+                    <th>Anzahl</th>
                     <th>Quelle</th>
-                    <th>Von</th>
-                    <th>An</th>
+                    <th>Angreifer</th>
+                    <th>Ziel</th>
                     <th>SSID</th>
                 </tr>
             </thead>
@@ -216,15 +217,21 @@
             .then(r => r.json())
             .then(events => {
                 const tbody = document.getElementById('events-body');
-                tbody.innerHTML = events.map(e => `
+                tbody.innerHTML = events.map(e => {
+                    const timeLabel = e.first_time !== e.time
+                        ? `${new Date(e.first_time * 1000).toLocaleTimeString()}–${new Date(e.time * 1000).toLocaleTimeString()}`
+                        : new Date(e.time * 1000).toLocaleTimeString();
+                    return `
                     <tr>
-                        <td>${new Date(e.time * 1000).toLocaleTimeString()}</td>
+                        <td>${timeLabel}</td>
+                        <td>${e.count}</td>
                         <td class="source-${e.source}">${e.source === 'self' ? 'Selbst gesendet' : 'Beobachtet'}</td>
-                        <td>${e.src}</td>
-                        <td>${e.dst}</td>
+                        <td>${e.attacker}</td>
+                        <td>${e.target}</td>
                         <td>${e.ssid}</td>
                     </tr>
-                `).join('');
+                `;
+                }).join('');
             })
             .catch(e => console.error('Error loading events:', e));
     }

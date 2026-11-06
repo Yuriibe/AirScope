@@ -75,6 +75,14 @@ class PacketHandlers:
                 self.seen_clients[mac]['connected_to'] = None
                 self.seen_clients[mac]['last_seen'] = now
 
+        # While channel_state is paused, only our own DeauthAttacker holds the
+        # channel - these are our own frames looping back through the sniffer,
+        # not a third-party attack. DeauthAttacker logs its own 'self' event
+        # once the burst finishes, so skip logging here to avoid flooding the
+        # event log with hundreds of duplicate "observed" entries.
+        if self.channel_state and self.channel_state.paused.is_set():
+            return
+
         self.deauth_events.append({
             'time': now,
             'src': src,

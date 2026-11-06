@@ -43,5 +43,6 @@ class DeauthAttacker:
             'src': bssid,
             'dst': target,
             'bssid': bssid,
-            'source': 'self'
+            'source': 'self',
+            'count': count * 2
         })

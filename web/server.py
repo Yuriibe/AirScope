@@ -56,21 +56,57 @@ class WebDataBridge:
         """Known APs with their known connected/probing clients, for the target picker"""
         return self.get_network_data()
 
-    def get_deauth_events(self, limit=100):
-        """Most recent deauth events (observed and self-sent), newest first"""
-        events = []
-        for event in list(self.deauth_events)[-limit:]:
-            ap_info = self.seen_aps.get(event['bssid'], {})
-            events.append({
-                "time": event['time'],
-                "src": event['src'],
-                "dst": event['dst'],
-                "bssid": event['bssid'],
+    def _describe_actor(self, mac, bssid):
+        """Human-readable label for a MAC seen in a deauth frame"""
+        if mac == "ff:ff:ff:ff:ff:ff":
+            return "Alle Clients (Broadcast)"
+        if mac == bssid:
+            return "Access Point"
+        vendor = self.vendor_manager.find_vendor_by_mac(mac)
+        return f"{mac} ({vendor})"
+
+    def get_deauth_events(self, limit=300, group_window=2.0):
+        """Deauth events, newest first. A burst between the same two MACs
+        (either direction - AP->client and client->AP both happen per burst)
+        within group_window seconds collapses into one row with a count, so
+        hundreds of frames read as one event instead of a wall of duplicates."""
+        raw = list(self.deauth_events)[-limit:]
+
+        groups = []
+        for event in raw:
+            source = event.get('source', 'observed')
+            # frozenset ignores direction, so AP->client and client->AP frames
+            # from the same burst merge into a single group.
+            key = (frozenset((event['src'], event['dst'])), event['bssid'], source)
+            if groups and groups[-1]['key'] == key and event['time'] - groups[-1]['last_time'] <= group_window:
+                groups[-1]['count'] += event.get('count', 1)
+                groups[-1]['last_time'] = event['time']
+            else:
+                groups.append({
+                    'key': key,
+                    'attacker': event['src'],
+                    'target': event['dst'],
+                    'bssid': event['bssid'],
+                    'source': source,
+                    'first_time': event['time'],
+                    'last_time': event['time'],
+                    'count': event.get('count', 1)
+                })
+
+        result = []
+        for g in groups:
+            ap_info = self.seen_aps.get(g['bssid'], {})
+            result.append({
+                "time": g['last_time'],
+                "first_time": g['first_time'],
+                "count": g['count'],
+                "attacker": self._describe_actor(g['attacker'], g['bssid']),
+                "target": self._describe_actor(g['target'], g['bssid']),
                 "ssid": ap_info.get('ssid', 'Unknown'),
-                "source": event.get('source', 'observed')
+                "source": g['source']
             })
-        events.reverse()
-        return events
+        result.reverse()
+        return result
 
 @app.route('/')
 def index():
