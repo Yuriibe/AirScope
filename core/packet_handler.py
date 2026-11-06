@@ -99,22 +99,29 @@ class PacketHandlers:
 
     def packet_handler(self, pkt):
         """Main packet processing dispatcher"""
-        if not pkt.haslayer(Dot11):
-            return
+        try:
+            if not pkt.haslayer(Dot11):
+                return
 
-        # Management frames
-        if pkt.type == 0:
-            if pkt.subtype == 8:  # Beacon frames
-                self.handle_beacon_frame(pkt)
-            elif pkt.subtype == 4:  # Probe requests
-                self.handle_probe_request(pkt)
-            elif pkt.subtype in (0, 2):  # Association / reassociation requests
-                self.handle_association_request(pkt)
-            elif pkt.subtype == 10:  # Disassociation
-                self.handle_disassociation(pkt)
-            elif pkt.subtype == 12:  # Deauthentication
-                self.handle_deauthentication(pkt)
+            # Management frames
+            if pkt.type == 0:
+                if pkt.subtype == 8:  # Beacon frames
+                    self.handle_beacon_frame(pkt)
+                elif pkt.subtype == 4:  # Probe requests
+                    self.handle_probe_request(pkt)
+                elif pkt.subtype in (0, 2):  # Association / reassociation requests
+                    self.handle_association_request(pkt)
+                elif pkt.subtype == 10:  # Disassociation
+                    self.handle_disassociation(pkt)
+                elif pkt.subtype == 12:  # Deauthentication
+                    self.handle_deauthentication(pkt)
 
-        # Data frames
-        elif pkt.type == 2:
-            self.handle_data_frame(pkt)
+            # Data frames
+            elif pkt.type == 2:
+                self.handle_data_frame(pkt)
+        except Exception as e:
+            # A single oddly-shaped frame must never take down the whole
+            # unattended capture - scapy already successfully dissected it
+            # by the time we get here, but our own field access can still
+            # fail on an unexpected/malformed packet.
+            print(f"⚠️ Packet handling error: {e}")

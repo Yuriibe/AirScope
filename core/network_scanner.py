@@ -20,7 +20,7 @@ class NetworkScanner:
                     time.sleep(1.0)
 
     def start_sniffing(self, packet_handlers):
-        """Sniff session with error handling; restarts on socket errors without growing the stack"""
+        """Sniff session with error handling; restarts on any capture error without growing the stack"""
         while True:
             try:
                 print("🔍 Starting packet capture...")
@@ -29,7 +29,11 @@ class NetworkScanner:
             except KeyboardInterrupt:
                 print("\n🛑 Capture interrupted by user")
                 return
-            except OSError as e:
-                print(f"⚠️ Socket error: {e}")
+            except Exception as e:
+                # Scapy can raise all sorts of things (OSError on a dead socket,
+                # struct.error/Scapy_Exception on a malformed/truncated frame, etc.)
+                # while dissecting a captured frame - any of those must not take
+                # the whole unattended capture down.
+                print(f"⚠️ Capture error: {e}")
                 print("🔄 Restarting in 3 seconds...")
                 time.sleep(3)
