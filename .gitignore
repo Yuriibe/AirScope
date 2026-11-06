@@ -82,6 +82,7 @@ celerybeat-schedule
 
 # AirScope collected data
 *.db
+captures/
 
 # virtualenv
 venv/

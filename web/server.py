@@ -1,11 +1,15 @@
+import os
 import threading
 
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, send_from_directory
+
+from config.settings import Config
 
 app = Flask(__name__)
 
 web_bridge = None
 deauth_attacker = None
+handshake_capture = None
 
 class WebDataBridge:
     def __init__(self, seen_aps, seen_clients, vendor_manager, deauth_events=None):
@@ -169,6 +173,48 @@ def start_deauth():
 
     threading.Thread(target=run_attack, daemon=True).start()
     return jsonify({"status": "started", "bssid": bssid, "client_mac": client_mac, "count": count})
+
+
+@app.route('/api/handshake/events')
+def get_handshake_events():
+    if handshake_capture is None:
+        return jsonify([])
+    events = list(reversed(handshake_capture.get_history()))
+    for event in events:
+        event['can_download'] = bool(event.get('path'))
+    return jsonify(events)
+
+
+@app.route('/api/handshake/start', methods=['POST'])
+def start_handshake():
+    if handshake_capture is None or deauth_attacker is None:
+        return jsonify({"error": "Not initialized"}), 503
+
+    payload = request.get_json(force=True, silent=True) or {}
+    bssid = payload.get('bssid')
+    client_mac = payload.get('client_mac')
+    deauth_count = int(payload.get('deauth_count', Config.HANDSHAKE_DEAUTH_COUNT))
+    timeout = float(payload.get('timeout', Config.HANDSHAKE_TIMEOUT))
+
+    if not bssid or not client_mac:
+        return jsonify({"error": "bssid and client_mac are required"}), 400
+
+    handshake_capture.start_session(bssid, client_mac, timeout=timeout)
+
+    def trigger_deauth():
+        try:
+            deauth_attacker.send_deauth(bssid, client_mac, count=deauth_count)
+        except Exception as e:
+            print(f"⚠️  Deauth during handshake capture failed: {e}")
+
+    threading.Thread(target=trigger_deauth, daemon=True).start()
+    return jsonify({"status": "started", "bssid": bssid, "client_mac": client_mac, "timeout": timeout})
+
+
+@app.route('/api/handshake/download/<filename>')
+def download_handshake(filename):
+    directory = os.path.abspath(Config.CAPTURE_DIR)
+    return send_from_directory(directory, os.path.basename(filename), as_attachment=True)
 
 
 def start_server(seen_aps, seen_clients, vendor_manager, host='0.0.0.0', port=5000):

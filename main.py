@@ -5,6 +5,7 @@ from scapy.config import conf
 from config.settings import Config
 from core.channel_state import ChannelState
 from core.deauth_attacker import DeauthAttacker
+from core.handshake_capture import HandshakeCapture
 from core.network_scanner import NetworkScanner
 from core.packet_handler import PacketHandlers
 from display.formatter import NetworkFormatter, DataStore
@@ -25,7 +26,9 @@ deauth_events = []
 if __name__ == "__main__":
     vendor_manager = VendorManager(Config.VENDOR_DB_PATH)
     channel_state = ChannelState()
-    packet_handlers = PacketHandlers(seen_aps, seen_clients, deauth_events, channel_state)
+    handshake_capture = HandshakeCapture(seen_aps, Config.CAPTURE_DIR)
+    packet_handlers = PacketHandlers(seen_aps, seen_clients, deauth_events, channel_state, handshake_capture)
+    web.server.handshake_capture = handshake_capture
 
     # Initialize web bridge before starting Flask
     web.server.web_bridge = WebDataBridge(seen_aps, seen_clients, vendor_manager, deauth_events)

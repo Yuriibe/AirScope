@@ -1,14 +1,16 @@
 import time
 
 from scapy.layers.dot11 import Dot11
+from scapy.layers.eap import EAPOL
 
 
 class PacketHandlers:
-    def __init__(self, seen_aps, seen_clients, deauth_events=None, channel_state=None):
+    def __init__(self, seen_aps, seen_clients, deauth_events=None, channel_state=None, handshake_capture=None):
         self.seen_aps = seen_aps
         self.seen_clients = seen_clients
         self.deauth_events = deauth_events if deauth_events is not None else []
         self.channel_state = channel_state
+        self.handshake_capture = handshake_capture
 
     def handle_beacon_frame(self, pkt):
         """Handle Access Point beacon frames"""
@@ -109,10 +111,18 @@ class PacketHandlers:
             self.seen_clients[dst]['ssid'] = self.seen_aps.get(src, {}).get('ssid', 'Unknown')
             self.seen_clients[dst]['last_seen'] = now
 
+    def handle_eapol(self, pkt):
+        """Hand WPA 4-way handshake frames to an active HandshakeCapture session, if any"""
+        if self.handshake_capture:
+            self.handshake_capture.on_packet(pkt)
+
     def packet_handler(self, pkt):
         """Main packet processing dispatcher"""
         if not pkt.haslayer(Dot11):
             return
+
+        if pkt.haslayer(EAPOL):
+            self.handle_eapol(pkt)
 
         # Management frames
         if pkt.type == 0:

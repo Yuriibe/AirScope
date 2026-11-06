@@ -129,6 +129,38 @@
     </div>
 
     <div class="panel">
+        <h3 style="color: #00ccff; margin-bottom: 10px;">🤝 Handshake Capture</h3>
+        <label for="hs-ap-select">Access Point</label>
+        <select id="hs-ap-select"></select>
+
+        <label for="hs-client-select">Client (muss konkret sein, kein Broadcast)</label>
+        <select id="hs-client-select"></select>
+
+        <label for="hs-timeout-input">Timeout (Sekunden)</label>
+        <input type="number" id="hs-timeout-input" value="15" min="1">
+
+        <button onclick="startHandshakeCapture()">🤝 Capture starten</button>
+        <div id="hs-status"></div>
+    </div>
+
+    <div class="panel">
+        <h3 style="color: #00ccff; margin-bottom: 10px;">Handshake Captures</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Zeit</th>
+                    <th>SSID</th>
+                    <th>Client</th>
+                    <th>Status</th>
+                    <th>Frames</th>
+                    <th>Download</th>
+                </tr>
+            </thead>
+            <tbody id="handshake-events-body"></tbody>
+        </table>
+    </div>
+
+    <div class="panel">
         <h3 style="color: #00ccff; margin-bottom: 10px;">Deauth Events</h3>
         <table>
             <thead>
@@ -153,13 +185,21 @@
             .then(r => r.json())
             .then(data => {
                 targets = data;
-                const apSelect = document.getElementById('ap-select');
-                const current = apSelect.value;
-                apSelect.innerHTML = targets.map(ap =>
+                const options = targets.map(ap =>
                     `<option value="${ap.bssid}">${ap.ssid || '<hidden>'} (${ap.bssid})</option>`
                 ).join('');
+
+                const apSelect = document.getElementById('ap-select');
+                const current = apSelect.value;
+                apSelect.innerHTML = options;
                 if (current) apSelect.value = current;
                 updateClientOptions();
+
+                const hsApSelect = document.getElementById('hs-ap-select');
+                const hsCurrent = hsApSelect.value;
+                hsApSelect.innerHTML = options;
+                if (hsCurrent) hsApSelect.value = hsCurrent;
+                updateHandshakeClientOptions();
             })
             .catch(e => console.error('Error loading targets:', e));
     }
@@ -177,7 +217,18 @@
         clientSelect.innerHTML = options.join('');
     }
 
+    function updateHandshakeClientOptions() {
+        const bssid = document.getElementById('hs-ap-select').value;
+        const ap = targets.find(a => a.bssid === bssid);
+        const clientSelect = document.getElementById('hs-client-select');
+        const options = (ap ? ap.clients : []).map(c =>
+            `<option value="${c.mac}">${c.mac} (${c.vendor})</option>`
+        );
+        clientSelect.innerHTML = options.length ? options.join('') : '<option value="">Kein Client bekannt</option>';
+    }
+
     document.getElementById('ap-select').addEventListener('change', updateClientOptions);
+    document.getElementById('hs-ap-select').addEventListener('change', updateHandshakeClientOptions);
 
     function startAttack() {
         const bssid = document.getElementById('ap-select').value;
@@ -236,10 +287,71 @@
             .catch(e => console.error('Error loading events:', e));
     }
 
+    function startHandshakeCapture() {
+        const bssid = document.getElementById('hs-ap-select').value;
+        const client_mac = document.getElementById('hs-client-select').value;
+        const timeout = parseFloat(document.getElementById('hs-timeout-input').value) || 15;
+        const statusDiv = document.getElementById('hs-status');
+
+        if (!bssid || !client_mac) {
+            statusDiv.textContent = 'AP und Client müssen ausgewählt sein.';
+            statusDiv.style.color = '#ff6b6b';
+            return;
+        }
+
+        fetch('/api/handshake/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ bssid, client_mac, timeout })
+        })
+            .then(r => r.json())
+            .then(data => {
+                if (data.error) {
+                    statusDiv.textContent = 'Fehler: ' + data.error;
+                    statusDiv.style.color = '#ff6b6b';
+                } else {
+                    statusDiv.textContent = `Capture läuft gegen ${data.client_mac} (${data.bssid}), Timeout ${data.timeout}s...`;
+                    statusDiv.style.color = '#00ff88';
+                }
+            })
+            .catch(e => {
+                statusDiv.textContent = 'Fehler beim Starten: ' + e;
+                statusDiv.style.color = '#ff6b6b';
+            });
+    }
+
+    const HS_STATUS_LABELS = {
+        capturing: 'Läuft...',
+        complete: 'Vollständig',
+        partial: 'Unvollständig',
+        no_data: 'Kein Handshake erfasst'
+    };
+
+    function loadHandshakeEvents() {
+        fetch('/api/handshake/events')
+            .then(r => r.json())
+            .then(events => {
+                const tbody = document.getElementById('handshake-events-body');
+                tbody.innerHTML = events.map(e => `
+                    <tr>
+                        <td>${new Date(e.time * 1000).toLocaleTimeString()}</td>
+                        <td>${e.ssid}</td>
+                        <td>${e.client_mac}</td>
+                        <td>${HS_STATUS_LABELS[e.status] || e.status}</td>
+                        <td>${e.frame_count}</td>
+                        <td>${e.can_download ? `<a href="/api/handshake/download/${e.path.split('/').pop()}" style="color:#00ccff;">.pcap</a>` : '-'}</td>
+                    </tr>
+                `).join('');
+            })
+            .catch(e => console.error('Error loading handshake events:', e));
+    }
+
     loadTargets();
     loadEvents();
+    loadHandshakeEvents();
     setInterval(loadTargets, 10000);
     setInterval(loadEvents, 3000);
+    setInterval(loadHandshakeEvents, 3000);
 </script>
 </body>
 </html>
