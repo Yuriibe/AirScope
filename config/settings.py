@@ -5,3 +5,7 @@ class Config:
     CHANNELS = [1, 6, 11]
     CHANNEL_DWELL_TIME = 5.0
     SUMMARY_INTERVAL = 5
+
+    DB_PATH = "airscope.db"
+    PERSIST_INTERVAL = 30.0  # seconds between persistence/prune passes
+    STALE_TIMEOUT = 300.0    # seconds of inactivity before an AP/client is pruned from memory

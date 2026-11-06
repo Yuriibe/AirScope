@@ -80,6 +80,9 @@ celerybeat-schedule
 # dotenv
 .env
 
+# AirScope collected data
+*.db
+
 # virtualenv
 venv/
 ENV/

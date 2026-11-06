@@ -7,6 +7,7 @@ from core.network_scanner import NetworkScanner
 from core.packet_handler import PacketHandlers
 from display.formatter import NetworkFormatter, DataStore
 from helper.interface_manager import InterfaceManager
+from helper.persistence_manager import PersistenceManager
 from helper.vendor_manager import VendorManager
 from web.server import app, WebDataBridge
 import web.server
@@ -26,6 +27,10 @@ if __name__ == "__main__":
     web.server.web_bridge = WebDataBridge(seen_aps, seen_clients, vendor_manager)
     print(f"DEBUG: Initialized web_bridge with {len(seen_aps)} APs and {len(seen_clients)} clients")
 
+    persistence_manager = PersistenceManager(
+        seen_aps, seen_clients, Config.DB_PATH, Config.STALE_TIMEOUT
+    )
+
     with InterfaceManager(Config.INTERFACE) as iface_manager:
         scanner = NetworkScanner(iface_manager, Config)
         formatter = NetworkFormatter(
@@ -41,6 +46,11 @@ if __name__ == "__main__":
         print("🚀 Starting channel hopper...")
         threading.Thread(target=scanner.channel_hopper, daemon=True).start()
         threading.Thread(target=formatter.periodic_summary, daemon=True).start()
+        threading.Thread(
+            target=persistence_manager.run_periodic,
+            args=(Config.PERSIST_INTERVAL,),
+            daemon=True
+        ).start()
 
         print("🔍 Sniffing across channels (Ctrl+C to stop)...")
         scanner.start_sniffing(packet_handlers)
